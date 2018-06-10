@@ -1,0 +1,187 @@
+---
+title: "INFX 573 Lab: Tree-Based Method"
+author: "Pierre Augustamar"
+date: "November 23rd, 2016"
+output: 
+  tufte_handout:
+    highlight: tango
+---
+
+\marginnote{\textcolor{blue}{Don't forget to list the full names of your collaborators!}}
+
+# Collaborators: 
+
+# \textbf{Instructions:}
+
+Before beginning this assignment, please ensure you have access to R and/or RStudio. 
+
+1. Download the `week9a_lab_james_trees.pdf` file from Canvas. Open `week9a_lab_james_trees.pdf` in RStudio (or your favorite editor) and supply your solutions to the assignment by editing `week9a_lab_james_trees.pdf`. 
+
+2. Replace the "Insert Your Name Here" text in the `author:` field with your own full name.
+
+3. Be sure to include code chucks, figures and written explanations as necessary. Any collaborators must be listed on the top of your assignment. Any figures should be clearly labeled and appropriately referenced within the text. 
+
+5. When you have completed the assignment and have **checked** that your code both runs in the Console and knits correctly when you click `Knit`, rename the R Markdown file to `YourLastName_YourFirstName_lab6a.Rmd`, and knit it into a PDF. Submit the compiled PDF on Canvas.
+
+In this lab, you will need access to the following R packages:
+
+```{r Setup, message=FALSE}
+# Load some helpful libraries
+library(tree)
+```
+
+# Fitting Classification tree using the carseats data
+
+```{r setup, message=FALSE}
+library(ISLR) # Download and load data
+attach(Carseats) #making carseats available 
+#set High to no if sales is less than equal to 8, otherwise set High to yes
+High=ifelse(Sales<=8, "No", "Yes") 
+```
+
+
+```{r}
+Carseats=data.frame(Carseats,High) #merge high with the rest of the carseats
+```
+
+
+```{r}
+#fit a classfication tree in order to predict high using all variables excluding sales
+tree.carseats=tree(High~.-Sales,Carseats) 
+```
+
+
+```{r}
+summary(tree.carseats) #list the variables that are used as internal nodes in the tree
+
+```
+
+
+```{r}
+plot(tree.carseats) #display the tree structure
+
+#display the node labels and include the category names for any qualitative predictors
+text(tree.carseats,pretty=0) 
+```
+
+
+```{r}
+tree.carseats #show output corresponding to each branch of the tree. 
+```
+
+## Split the observations into a training set and a test set
+```{r}
+set.seed(2) #set seed to ensure that results and figures are reproducible. 
+#generate 200 values ranging from 1 to the number of rows in carseats for the train data
+train=sample(1:nrow(Carseats),200) 
+Carseats.test=Carseats[-train,] #create test data for carseats 
+High.test=High[-train] #select all but the the train data
+```
+
+##Tree based methods
+
+```{r}
+tree.carseats=tree(High~.-Sales,Carseats,subset=train) #create a decision tree
+# generate an estimation using type = class
+tree.pred=predict(tree.carseats,Carseats.test,type="class")
+#table of prediction for high test data 
+table(tree.pred,High.test)
+```
+
+
+
+```{r}
+ #set seed to ensure that results and figures are reproducible.
+set.seed(3)
+#perform cross valdation through prunning process
+cv.carseats=cv.tree(tree.carseats,FUN=prune.misclass) 
+names(cv.carseats) #get the names of the cross validation for 
+cv.carseats #show output corresponding to the cross validation carseats
+```
+
+
+```{r}
+#create a multi panel with 1 row and 2 columns
+par(mfrow=c(1,2)) 
+#display the error rate as a function of the size
+plot(cv.carseats$size,cv.carseats$dev,type="b")
+#display the error rate as a function of k
+plot(cv.carseats$k,cv.carseats$dev,type="b") 
+```
+
+
+```{r}
+#prune the tree to obtain the nine-node tree
+prune.carseats=prune.misclass(tree.carseats,best=9) 
+plot(prune.carseats) #display the pruned carseats
+#adding test to the display pruned with a nicer settings
+text(prune.carseats,pretty=0) 
+```
+
+```{r}
+#unpruned the tree to make prediction on the test data
+tree.pred=predict(prune.carseats,Carseats.test,type="class") 
+table(tree.pred,High.test) #table of prediction for high test data 
+#figure out percentage of the observations that are correctly classified
+(94+60)/200 
+```
+
+```{r}
+#prune the tree to obtain the fifteen noded tree
+prune.carseats=prune.misclass(tree.carseats,best=15)
+plot(prune.carseats) #display the pruned carseats
+text(prune.carseats,pretty=0) #adding test to the display pruned with a nicer settings
+#apply predict to find out how the pruned performed against the test data
+tree.pred=predict(prune.carseats,Carseats.test,type="class")
+table(tree.pred,High.test) #table of prediction for high test data 
+#figure out percentage of the observations that are correctly classified
+(86+62)/200 #
+```
+
+# Fitting Regression Trees using Boston data set
+
+```{r}
+library(MASS) #load the library that contains Boston data
+set.seed(1) #set seed to ensure that results and figures are reproducible.
+train=sample(1:nrow(Boston),nrow(Boston)/2) #create a training set
+tree.boston=tree(medv~.,Boston,subset=train)   #fit the tree to the training data
+summary(tree.boston) #list the variables that are used as internal nodes in the tree
+```
+
+
+```{r}
+#display the boston tree node
+plot(tree.boston)
+#adding test to the display pruned with a nicer settings
+text(tree.boston,pretty=0)
+```
+
+```{r}
+#Check if pruning will improve the performance
+cv.boston=cv.tree(tree.boston)
+ #display the error rate as a function of the size
+plot(cv.boston$size,cv.boston$dev,type='b')
+```
+
+
+```{r}
+#prun the boston tree to obtain the 5 nodes tree
+prune.boston=prune.tree(tree.boston,best=5)
+plot(prune.boston) #display the prune tree
+#adding test to the display pruned with a nicer settings
+text(prune.boston,pretty=0) 
+```
+
+
+```{r}
+#unpruned the tree to make predictions on the test set
+yhat=predict(tree.boston,newdata=Boston[-train,])
+boston.test=Boston[-train,"medv"]
+#display the unpruned test data
+plot(yhat,boston.test)
+abline(0,1) # add a straight line to the plot
+mean((yhat-boston.test)^2)#calculate the mean value of test data 
+
+```
+
+

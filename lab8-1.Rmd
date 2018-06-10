@@ -1,0 +1,97 @@
+---
+output: pdf_document
+---
+[---
+title: "INFX 573 Lab: 8b james.et.al"
+author: "Pierre Augustamar"
+date: "November 17th, 2016"
+
+---
+
+
+
+# Collaborators: 
+
+# \textbf{Instructions:}
+
+Before beginning this assignment, please ensure you have access to R and/or RStudio. 
+
+1. Download the `week8a_lab.Rmd` file from Canvas. Open `week8a_lab.Rmd` in RStudio (or your favorite editor) and supply your solutions to the assignment by editing `week8a_lab.Rmd`. 
+
+2. Replace the "Insert Your Name Here" text in the `author:` field with your own full name.
+
+3. Be sure to include code chucks, figures and written explanations as necessary. Any collaborators must be listed on the top of your assignment. Any figures should be clearly labeled and appropriately referenced within the text. 
+
+5. When you have completed the assignment and have **checked** that your code both runs in the Console and knits correctly when you click `Knit`, rename the R Markdown file to `YourLastName_YourFirstName_lab6a.Rmd`, and knit it into a PDF. Submit the compiled PDF on Canvas.
+
+In this lab, you will need access to the following R packages:
+
+Use the Stock Market data set to analyze the correlation of whether the market will be up or down 
+
+```{r Setup, message=FALSE}
+# Load some helpful libraries
+library(ISLR)
+
+```
+
+# Analyze the data
+```{r}
+names(Smarket) #extract information from Smarket 
+summary(Smarket) #generate results summaries 
+```
+
+# Generate a pairwise correlations
+```{r}
+cor(Smarket[,-9]) #generate a matrix that contains all of the pairwise correlations 
+```
+
+# Generate a graph of the volume as response
+```{r}
+attach(Smarket)
+plot(Volume) #ploting the correlation of volume to year
+```
+
+# Logistic Regression
+
+```{r}
+# fits generalized linear model to predict direction using lag1 through lag5 and volume
+glm.fit = glm(Direction ~ Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data=Smarket, family=binomial)
+summary(glm.fit) #generate a summary of the generalized model 
+
+```
+The summary shows that the smallest p-value is associated with lag1. Thus, if we were to remove lag1 from the model then there might be a higher estimate overall. 
+
+# Generate a coefficient
+```{r}
+coef(glm.fit) #get the coefficient of the fitted model 
+glm.probs = predict(glm.fit , type ="response")
+```
+
+# Generate probability 
+```{r}
+ #predicting the problity of the market going up
+glm.probs = predict(glm.fit , type ="response")
+glm.probs[1:10] #printing the first 10 probabilityes
+
+```
+
+```{r}
+contrasts(Direction) #train R to generate a dummy variable for up and down... 1 = up and 0 = down 
+
+#creating a vector of class predictions based on whether the predictability of a market increase is greather or less than 0.5
+glm.pred = rep("Down",1250)
+glm.pred[glm.probs >.5]="Up"
+
+```
+
+
+```{r}
+#determine total observations that were correctly or inconrectly classified. 
+table(glm.pred , Direction)
+ (507+145) /1250
+ mean(glm.pred == Direction)
+              
+```
+
+
+

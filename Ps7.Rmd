@@ -1,0 +1,422 @@
+---
+title: "INFX 573 Problem Set 7 - Prediction"
+author: "Pierre Augustamar"
+date: "Due: Tueday, November 29, 2016"
+output: pdf_document
+header-includes:
+- \newcommand{\benum}{\begin{enumerate}}
+- \newcommand{\eenum}{\end{enumerate}}
+- \newcommand{\bitem}{\begin{itemize}}
+- \newcommand{\eitem}{\end{itemize}}
+---
+##### Collaborators: 
+
+##### Instructions: #####
+
+Before beginning this assignment, please ensure you have access to R and RStudio. 
+
+1. Download the `problemset7.Rmd` file from Canvas. Open `problemset7.Rmd` in RStudio and supply your solutions to the assignment by editing `problemset7.Rmd`. 
+
+2. Replace the "Insert Your Name Here" text in the `author:` field with your own full name. Any collaborators must be listed on the top of your assignment. 
+
+3. Be sure to include well-documented (e.g. commented) code chucks, figures and clearly written text chunk explanations as necessary. Any figures should be clearly labeled and appropriately referenced within the text. 
+
+4. Collaboration on problem sets is acceptable, and even encouraged, but each student must turn in an individual write-up in his or her own words and his or her own work. The names of all collaborators must be listed on each assignment. Do not copy-and-paste from other students' responses or code.
+
+5. When you have completed the assignment and have **checked** that your code both runs in the Console and knits correctly when you click `Knit PDF`, rename the R Markdown file to `YourLastName_YourFirstName_ps7.Rmd`, knit a PDF and submit the PDF file on Canvas.
+
+##### Setup: #####
+
+In this problem set you will need, at minimum, the following R packages.
+
+```{r Setup, message=FALSE}
+# Load standard libraries
+library(tidyverse)
+library(gridExtra)
+library(MASS)
+library(pROC)
+library(arm)
+library(randomForest)
+library(xgboost)
+library(dplyr)
+library(class)
+library(ResourceSelection)
+library(ROCR)
+```
+
+\noindent \textbf{Data:} In this problem set we will use the \texttt{titanic} dataset used previously in class. The Titanic text file contains data about the survival of passengers aboard the Titanic. Table \ref{tab:data} contains a description of this data. 
+\vspace{.1in}
+
+```{r Load data}
+# Load data
+titanic_data <- read.csv('../labs/titanic.csv')
+#str(data) # explore data structure
+attach(titanic_data) 
+```
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+{\bf Variable} & {\bf Description} \\ \hline \hline
+pclass      &    Passenger Class \\
+            &    (1 = 1st; 2 = 2nd; 3 = 3rd) \\ \hline
+survived    &    Survival \\
+            &    (0 = No; 1 = Yes) \\ \hline
+name        &    Name \\ \hline
+sex         &    Sex \\ \hline
+age         &    Age \\ \hline
+sibsp       &    Number of Siblings/Spouses Aboard \\ \hline
+parch       &    Number of Parents/Children Aboard \\ \hline 
+ticket      &    Ticket Number \\ \hline
+fare        &    Passenger Fare \\ \hline
+cabin       &    Cabin \\ \hline
+embarked    &    Port of Embarkation \\
+            &    (C = Cherbourg; Q = Queenstown; S = Southampton) \\ \hline
+boat        &    Lifeboat \\ \hline
+body        &    Body Identification Number \\ \hline
+home.dest   &    Home/Destination \\
+\hline
+\end{tabular}
+\caption{Description of variables in the Titanic Dataset}
+\label{tab:data}
+\end{table}
+\vspace{.1in}
+
+\newpage
+
+\benum
+\item As part of this assignment we will evaluate the performance of a few different statistical learning methods.  We will fit a particular statistical learning method on a set of \emph{training} observations and measure its performance on a set of \emph{test} observations. 
+
+\bitem
+\item[(a)] Discuss the advantages of using a training/test split when evaluating statistical models.
+When using a model to make predictions we need to have a way to assess the quality, accuracy and reliability fo the model in question. Test data is used to provid assessment of the reliability of the predictive models. Thus, the generated model is built from how the data is partitioned and the inforamtion gathered from the data. 
+
+\item[(b)] Split your data into a \emph{training} and \emph{test} set based on an 80-20 split, in other words, 80\% of the observations will be in the training set.
+
+```{r}
+#set seed to ensure that results and figures are reproducible.
+set.seed(2)
+titanic_data$id <- 1:nrow(titanic_data) #set id 
+# split the observations for 80 percent to be allocated for training set
+train <- titanic_data %>% sample_frac(.80) 
+#create test data for titanic. select data that do not exist in training set.
+test <- anti_join(titanic_data, train, by = 'id') 
+
+```
+Note generated the train and test data based on examples from: http://stackoverflow.com/questions/17200114/how-to-split-data-into-training-testing-sets-using-sample-function-in-r-program
+
+```{r}
+#Investigate each of the data sets and check for any NA values
+
+summary(train) #summary for train data set
+summary(test)  #summary for test data set
+```
+\eitem
+
+\item In this problem set our goal is to predict the survival of passengers. First consider training a logistic regression model for survival that controls for the socioeconomic status of the passenger. 
+
+\bitem
+\item[(a)] Fit the model described above using the \texttt{glm} function in R. 
+
+Note: I suggested \texttt{bayesglm} as well in case the model was unstable (you can see this with extremely large s.e. estimates for the coefficients). Be sure you included \texttt{pclass} as a \texttt{factor} because it is a categorical variable!
+
+```{r}
+#fit a linear regression model in order to predict survival
+
+#Use generalized linear model for the logistic regression
+glm.fit = glm(test$survived~factor(test$pclass), data=train, family=binomial)
+
+#generate a summary of the logistic regression for better analysis
+summary(glm.fit)
+```
+Intercept: passengers have 0.55 chance of survival from the titanic, this will be our baseline. 
+factor(pclass)2: passengers from the 2nd class have 1.19 less chance from surviving the titanic
+factor(pclass)3: passengers from the 3rd class have 1.65 less chances from surviving the titanic
+
+\item[(b)] What might you conclude based on this model about the probability of survival for lower class passengers?
+Each of the coefficients show a very small p-value where all of them are less than 0.05. Thus, there is a clear association between the socio-economic status of a passenger and the probabiliy of survival. To that end, we can conclude that passengers from the 3rd class have the least possibility of surviving the Titanic. 
+\eitem
+
+\item Next, let's consider the performance of this model. 
+
+\bitem
+\item[(a)] Predict the survival of passengers for each observation in your test set using the model fit in Problem 2. Save these predictions as \texttt{yhat}.
+```{r}
+#get predictions on the test data
+yhat=predict(glm.fit, type="response")
+yhat[1:10] #load the first 10 results for analysis
+```
+Given that the type="response" option tells R to output probabilities in the form of P(Y=1|x), then the values that were outputed correspond to the probability of a passenger surviving the Titanic. The first 10 probabilities that are shown correspond then to passengers surviving the Titanic. They show a value of 0.63 of predictions that our test data is not too far from the train data. 
+
+\item[(b)] Use a threshold of 0.5 to classify predictions. What is the number of false positives on the test data? Interpret this in your own words.
+```{r}
+testsurvived = ifelse(test$survived==1,"Yes","NO")
+glm.fit = glm(test$survived~factor(test$pclass), data=test, family=binomial)
+glm.probs = predict(glm.fit, type="response")
+glm.pred=rep("No", 262) #creates a vector of class predictions
+glm.pred[glm.probs>.5]="Yes" #probability of survival based on a threshold of .5 or greater
+table(glm.pred, testsurvived) #generates a confusion matrix. 
+(144 + 40)/262  #70% correct prediction
+```
+Our test model's accuracy indicates that there were 144 individuals that did not survived and 30 individuals survived, for a total of 144+40 = 184 correct predictions. Based on the above predictions we anticipate a 30% error test rate or  100-70 = 30 or 30%. 
+
+The number of false positives for this model would be 55. In other words, there were actually 55 people that did not survive when the test model predicted otherwise.  The false positive rate = 55/199 = 0.28
+
+\item[(c)] Using the \texttt{roc} function, plot the ROC curve for this model. Discuss what you find.
+```{r}
+
+pred = prediction(glm.probs,test$survived)
+perf = performance(pred,measure="tpr",x.measure = "fpr")
+#plot the AUC graph
+plot(perf)
+#add a diagonal line to the graph
+abline(a=0, b= 1)
+#calculating the AUC(Area under the curve)
+auc <- performance(pred, measure = "auc")
+auc
+```
+The graph shows a classifier that's above the random line, thus, the prediction data that we have used for our model is better than guessing. Though the ROC graph does not have the perfect "hump shaped" curve that's continually increasing, it's a however a respectable graph that slowly moving close to mediocre. We can see that our graph is moving closer to the diagonal line. Ideally, we would want to see a graph that's further away from the diagonal line. We noticed that we are losing in sensitivity (TPR barely reaching 40%). 
+
+Also, we have calculated the auc(area under the curve). It shows that Our model has an auc = 0.67. We have gotten a poor AUC as we would want to have an AUC = 1. Thus, the AUC is telling us that some of the test data that we have selected for our model may not be representing the classifier that we are expecting. We may have falsely calculated that did not survived and counted them as survived. The AUC results match the behavior that we are noticing on the graph as the curve is relatively close to the diagonal line. 
+\eitem
+
+\item Suppose we use the data to construct a new predictor variable based on a passenger's listed title (i.e. Mr., Mrs., Miss., Master). 
+
+\bitem
+\item[(a)] Why might this be an interesting variable to help predict passenger survival?
+title can be used for possible interesting interesting predictions. For instance, we could simulate the followings:
+* We could generate a prediction of survival based on those whose title's are rare like the following:
+   Capt, Col, Don, donna, Lady, Sir, the Countess, Dr, Rev, Jonkeer, and Dona
+* Since there are quite large number of missing 'Age', we can estimate someone's age based on the title. We could generate a prediction of survival based on those whose age were estimated based on the title
+* We could generate a prediction of survival for title's that matches a female who is possibly a mother or does not have the tittle 'Miss'. We would expect that mother's and child were left out of the boat first. 
+* We could estimate the possibility of survival when adding each title's as coefficient 
+* We could estimate survival when combining the socioeconomic status with the title's of that individual
+
+\item[(b)] Write a function to add this predictor to your dataset.
+```{r}
+#create a function to return someone's title
+nametitle <- function(name){
+    result <- gsub('(.*, )|(\\..*)', '',name)
+    return(result)
+}
+```
+Note that this code was modeled from: https://www.kaggle.com/mrisdal/titanic/exploring-survival-on-the-titanic/code
+
+\item[(c)] Fit a second logistic regression model including this new feature. Use the \texttt{summary} function to look at the model. Did this new feature improve the model? 
+```{r}
+#cleaning and processing title for train and test data set
+
+#convert name from factor to char 
+train$name = as.character(train$name)
+#remove the person's title from the name
+train$title = nametitle(train$name)
+#allocate mlle, ms and mme in the proper buckets
+train$title[train$title == 'Mlle'] <-'Miss'
+train$title[train$title == 'Ms']   <- 'Miss'
+train$title[train$title == 'Mme']  <- 'Mrs' 
+
+#convert name from factor to char 
+test$name = as.character(test$name)
+#split out the person's title from the name
+test$title = nametitle(test$name)
+#allocate mlle, ms and mme in the proper buckets
+test$title[test$title == 'Mlle'] <-'Miss'
+test$title[test$title == 'Ms']   <- 'Miss'
+test$title[test$title == 'Mme']  <- 'Mrs'
+
+```
+
+
+```{r}
+#fit a linear regression model in order to predict survival based on the person's title
+
+#Use generalized linear model for the logistic regression
+glm.fit = glm(as.factor(train$survived)~train$pclass+train$title, data=train, family=binomial)
+#generate a summary of the glm for analysis 
+summary(glm.fit)
+
+```
+When looking at the AIC value for both models, it appears that the new feature did improve the model. For instance, the AIC (Akaike information criterion) for the linear regression containing the pclass in relation to the surviving is at: 1301.6. On the other hand, when adding the title to the model, the AIC decreases to 1016.3. Ideally, the lower the AIC, then the better the model may perform best when used for prediction outside the dataset. Thus, by adding the title to our model, we have a better probabilty to predict who survived the Titanic. Note that AIC should not be used as the sole characteristic for this, but can be used as a starting point. 
+
+\item[(d)] Comment on the overall fit of this model. For example, you might consider exploring when misclassification occurs.
+
+Coefficients - We noticed that all the coefficients related to title were non-significant (p > 0.05), however the coefficient for pclass related factors were significant. 
+
+Deviance - We have a deviance of 1397.33 on 1046 degrees of freedom. However, when adding the indepdent variables (pclass and title), the deviance decreased to 985,93 on 1031 degrees of freedom. It was a significant reduction in deviance. The residual deviance was reduced by  411.40 with a loss of 15 degrees of freedom. 
+
+fisher scoring - it shows that the model had to go through 14 iterations in order to perform the fit. 
+
+AIC - as stated in the previous question/answer, the lower the AIC the better, this model has a lower AIC compare to when the title was not added into the model. 
+
+Best fit  - to find how well our model fits depends on the difference between the model and the observed data. We calculated the Hosmer-Lemeshow Goodness of Fit to get a better idea.  
+
+```{r}
+#generating the Hosmer-Lemeshow goodness fit and selecting 10 groups
+hoslem.test(train$survived, fitted(glm.fit), g=10) 
+
+```
+
+The generated Hosmer-Lemeshow goodness of fit test is based on dividing the sample up according to their predicted probabilities, or risks. Specifically, based on the estimated parameter values. Ideally, small values with large p-values indicate a good fit to the data while large values with p-values below 0.05 indicate a poor fit. Our model does not appear to fit well because we have significance difference between the model and the observed data since the pv-value is under 0.05.
+
+Note that this analysis was modeled agains the following url at: http://www.theanalysisfactor.com/r-glm-model-fit/
+
+Misclassification - looking at the generated confusion matrix calculated in step b from the previous question. It shows the following misclassifcation rate: (FP + FN) / total = 55+23/ 262 = 55.08. Knowing that FP (False Positive ) are predictions that should have been false, but were predicted as true. Similarly, FN(False Negative) are predictions that should have been true, but were predicted as false. It shows that our model has a rate of 55.08 of misclassification. We may need to change some of the classfications probability threshold to improve the misclassification rate. In this model we use a threshold of 0.5, thus in order to have a lower misclassification rate, We will need to decrease it to 0.1. 
+    
+
+\item[(e)] Predict the survival of passengers for each observation in your test data using the new model. Save these predictions as \texttt{yhat2}.
+```{r}
+set.seed(5) #set a seed for reproducibility
+
+yhat2=predict(glm.fit, type="response")
+yhat2[1:10] #get the first 10 records
+```
+Given that the type="response" option tells R to output probabilities in the form of P(Y=1|x), then the values that were outputed correspond to the probability of a passenger surviving the Titanic based on socio-economicstatus and title. The first 10 probabilities that are shown correspond then to passengers surviving the Titanic.
+
+\eitem
+
+\item Another very popular classifier used in data science is called a \emph{random  forest}\footnote{\url{https://www.stat.berkeley.edu/\~breiman/RandomForests/cc_home.htm}}.
+
+\bitem
+\item[(a)] Use the \texttt{randomForest} function to fit a random forest model with passenger class and title as predictors. Make predictions for the test set using the random forest model. Save these predictions as \texttt{yhat3}.
+
+```{r}
+set.seed(42) #set a seed value for reproducibility
+
+rf_yhat3 = randomForest(as.factor(test$survived)~test$pclass+ as.factor(test$title), data=train, importance=TRUE)
+# Predict using the test set
+yhat3 = predict(rf_yhat3, newdata=test)
+```
+, 
+\item[(b)] Develop your own random forest model, attempting to improve the model performance.  Make predictions for the test set using your new random forest model. Save these predictions as \texttt{yhat4}.
+```{r}
+set.seed(43) # set the seed for reproducibility
+rf_yhat4 = randomForest(as.factor(test$survived)~test$pclass+as.factor(test$title)+test$sex,data=train, importance=TRUE)
+# Predict using the test set
+yhat4 = predict(rf_yhat4, newdata=test)
+```
+
+\item[(c)] Compare the accuracy of each of the models from this problem set using ROC curves. Comment on which statistical learning method works best for predicting survival of the Titanic passengers. 
+
+```{r}
+#calculate ROC and AUC for yhat2
+
+glm.probs = predict(glm.fit, type="response")
+#calculate the prediction 
+pred = prediction(glm.probs,train$survived)
+#calculate the performance
+perf = performance(pred,measure="tpr",x.measure = "fpr")
+#ploting the ROC grah
+plot(perf)
+abline(a=0, b= 1) # create a diagonal line
+#calculating the AUC value 
+auc <- performance(pred, measure = "auc")
+auc
+```
+The graph shows a classifier that's above the random line, thus, the prediction data that we have used for our model is better than guessing. Though the ROC graph has a somewhat an acceptable "hump shaped" curve that's continually increasing.However, even though the graph is further away from the diagonal compare to the initial ROC graph generated in the previous question, we would want to see it a lot more further away from the diagonal line. We noticed that we are losing in sensitivity. TPR is between 40% to 60%. 
+
+Also, we have calculated the AUC and for this graph it is at 0.83. AUC is bound between 0 and 1, so this is fairly good. This AUC is telling us that someo of our test data in our model  may not be representing the classifier that we are expecting. We may have falsely calculated that did not survived and counted them as survived. 
+
+
+```{r}
+#calculate ROC and AUC for yhat3
+
+#get the predictions for yhat3
+predictions = as.vector(rf_yhat3$votes[,2])
+#generate the prediction of survivers
+titanic.rf.pred=prediction(predictions, test$survived)
+# generate performance in terms of 0 and 1 or surviving the titanic
+titanic.rf.perf = performance(titanic.rf.pred,measure="tpr",x.measure = "fpr")
+#plot the curve
+plot(titanic.rf.perf,main="ROC Curve for yhat3 Random Forest",col=2,lwd=2)
+abline(a=0,b=1,lwd=2,lty=2,col="gray")
+#compute the area under curve
+auc <- performance(titanic.rf.pred,"auc")
+auc
+
+```
+The graph shows a classifier that's above the random line, thus, the prediction data that we have used for our model is better than guessing. The ROC graph shows somewhat an acceptable "hump shaped" curve that's continually increasing.However, we noticed multiple times that the lines were dipping. Those dipping might be a sign of irregularity with the data. But, those lines seem to always recover. Ideally, We would want to have a fairly nice curve. We noticed that we are losing in sensitivity and the TPR was around 40%.  
+
+Also, we have calculated the AUC and for this graph it is at 0.86. AUC is bound between 0 and 1, so this is fairly good. This AUC is telling us that someo of our test data in our model  may not be representing the classifier that we are expecting. We may have falsely calculated that did not survived and counted them as survived. 
+
+```{r}
+#get the predictions for yhat4
+predictions4 = as.vector(rf_yhat4$votes[,2])
+#generate the prediction of survivers
+titanic.rf.pred4=prediction(predictions4, test$survived)
+# generate performance in terms of 0 and 1 or surviving the titanic
+titanic.rf.perf4 = performance(titanic.rf.pred4,measure="tpr",x.measure = "fpr")
+#plot the curve
+plot(titanic.rf.perf4,main="ROC Curve for yhat4 Random Forest",col=2,lwd=2)
+abline(a=0,b=1,lwd=2,lty=2,col="gray")
+#compute area under curve
+auc <- performance(titanic.rf.pred4,"auc")
+auc
+
+```
+
+The graph shows a classifier that's above the random line, thus, the prediction data that we have used for our model is better than guessing. The ROC graph shows somewhat an acceptable "hump shaped" curve that's continually increasing.However, we noticed that some the lines were dipping. It's not as bas as the previous ROC graphs. Those dipping might be a sign of irregularity with the data. But, those lines always recover. Ideally, We would want to have a fairly nice curve. We noticed that we are losing in sensitivity and the TPR was between 35% and 38%. 
+
+Also, we have calculated the AUC and for this graph it is at 0.87. AUC is bound between 0 and 1, so this is pretty good. This AUC is telling us that we have a very small set of our test data in our model that may not be representing the classifier that we are expecting. We may have falsely calculated that did not survived and counted them as survived. 
+
+
+To summarize our analysis, we know that in the context of an ROC curve, the more "up and left" it looks, the larger the AUC will be and thus, the better the classifier is. Based on the results we got from each of the graphs, we can fairly say that the model with the higher AUC will be the best selection. Thus, in this case "yhat4" which is the model were added the "sex" classifier has made an improvement on our prediction. 
+
+\eitem
+
+\item Finally, we will explore a gradient boosted tree model, using the `xgboost` package written by your fellow UW student Tianqi Chen. `xgboost` stands for ``Extreme Gradient Boosting'', which is state-of-the-art software known for its fast training time and predictive accuracy.
+
+\bitem
+\item[(a)] The XGB algorithm can only handle numeric data, so first we need to convert all categorical variables to a different representation, such as a sparse matrix.
+
+```{r}
+library(Matrix)
+sparse.matrix.train <- sparse.model.matrix(survived~pclass + sex + title -1, data = train) #converts train set factors to columns
+sparse.matrix.test <-  sparse.model.matrix(survived~pclass + sex + title -1, data = test) #converts test set factors to columns
+output_vector = train$survived #output vector to be predicted
+```
+
+\item[(b)] The following code fits a boosted tree model and produces a plot. Run the code and provide an explanation of the resulting plot.
+
+```{r}
+xgb.model.one <- xgb.cv(data= sparse.matrix.train,     #train sparse matrix
+                       label= output_vector,    #output vector to be predicted 
+                       eval.metric = 'logloss',     #model minimizes Root Mean Squared Error
+                       objective = "reg:logistic", #regression
+                       nfold = 10,
+                       #tuning parameters
+                       max.depth = 3,            #Vary btwn 3-15
+                       eta = 0.05,                #Vary btwn 0.1-0.3
+                       nthread = 5,             #Increase this to improve speed
+                       subsample= 1,            #Vary btwn 0.8-1
+                       colsample_bytree = 0.5,   #Vary btwn 0.3-0.8
+                       lambda = 0.5,             #Vary between 0-3
+                       alpha = 0.5,              #Vary between 0-3
+                       min_child_weight = 3,     #Vary btwn 1-10
+                       nround = 100             #Vary btwn 100-3000 based on max.depth, eta,subsample & colsample
+                       )
+plot(data.frame(xgb.model.one)[,1], type='l', col='black', ylab='CV logloss Error', xlab='# of trees')
+lines(data.frame(xgb.model.one)[,3], type='l', lty=2, col='black')
+```
+XGBoost model can evaluate and report on the performance on a test set for the model during training. To that end, the generated plot uses the logloss or binary logarithmic loss evaluation metrics to fit the boosted model tree. The plot shows a logarithmic loss of the XGBOOST model for each evaluation metrics on the train.logloss.mean for the training datasets, and the test.logloss.mean for the test datasets. From looking at the plot, it looks like there is an opportunity to stop the learining perhaps around between 40 to 60 trees. 
+
+\item[(c)] Modify the code to fit a boosted tree model that allows for 8 levels in each tree and uses a learning rate $\eta=.1$. Produce a visualization comparing the two models and explain what you can conclude about the new model. Which model do you prefer and why?
+```{r}
+library(gbm) # add the gbm library
+set.seed(1) # set the seed value for reproducibility
+#generate the generalized boost model
+gbm_model=gbm(survived~pclass+sex+factor(title),data=train,n.trees=5000, 
+             interaction.dept=8,distribution="bernoulli", bag.fraction = 0.1)
+
+#generate a summary of the model to get the relative influence
+summary(gbm_model)
+
+#generate the performance of the model 
+gbm.perf(gbm_model) 
+```
+
+The plot shows that between 2000 to 3000 trees the curve stops decreasing and started to stabilize. Thus, there is no need to continue training for more trees at the expense of more computation. 
+
+When comparing  both the xgboost and the gbm modle, I prefer the xgboost model because it controls over-fitting. It shows a better performance as far as running time of generating the model. The gbm model tends to take a long time to run as the cv.fold increases. I even noticed that it bogged down my computer if for instance the cv.fold is over 50. Also, the gbm requires more iterations to come up with a training trees and thus requires more computation time. Having said all that, I do like the relative influence grahp that the gbm model provides. It shows that title has the biggest influence on the gbm object while sex has the lowest influence. Thus, this tells us that creating a gbm model without the "title" classifier will have a better performance. And it also shows that adding the "sex" classifier will improve the performance. 
+\eitem
+\eenum
